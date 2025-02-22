@@ -50,6 +50,9 @@ class BillingHelper(context: Context) {
         }
     }
 
+    var lastState = ""
+    var stateObserver: ((String) -> Unit)? = null
+
     private var mutableProductDetailsList : MutableStateFlow<List<ProductDetails>> = MutableStateFlow(emptyList())
     val productDetailsList : StateFlow<List<ProductDetails>> = mutableProductDetailsList
 
@@ -86,6 +89,8 @@ class BillingHelper(context: Context) {
                         mutableActiveSubsList.update { result.getOrDefault(emptyList()) }
                     }else {
                         result.exceptionOrNull()?.printStackTrace()
+                        lastState = result.exceptionOrNull()?.message ?: "Error fetching subscriptions"
+                        stateObserver?.invoke(lastState)
                     }
                 }
                 fetchPurchasesAsync(BillingClient.ProductType.INAPP){ result ->
@@ -93,13 +98,34 @@ class BillingHelper(context: Context) {
                         mutableOneTimeList.update { result.getOrDefault(emptyList()) }
                     }else {
                         result.exceptionOrNull()?.printStackTrace()
+                        lastState = result.exceptionOrNull()?.message ?: "Error fetching purchases"
+                        stateObserver?.invoke(lastState)
                     }
                 }
-                fetchProductDetails(productList) { result ->
+                fetchProductDetails(productList.filter { it.type == BillingClient.ProductType.SUBS }) { result ->
                     if (result.isSuccess) {
-                        mutableProductDetailsList.update { result.getOrDefault(emptyList()) }
+                        mutableProductDetailsList.update {
+                            val mutableIt = it.toMutableList()
+                            mutableIt.addAll(result.getOrDefault(emptyList()))
+                            mutableIt
+                        }
                     } else {
                         result.exceptionOrNull()?.printStackTrace()
+                        lastState = result.exceptionOrNull()?.message ?: "Error fetching product details"
+                        stateObserver?.invoke(lastState)
+                    }
+                }
+                fetchProductDetails(productList.filter { it.type == BillingClient.ProductType.INAPP }) { result ->
+                    if (result.isSuccess) {
+                        mutableProductDetailsList.update {
+                            val mutableIt = it.toMutableList()
+                            mutableIt.addAll(result.getOrDefault(emptyList()))
+                            mutableIt
+                        }
+                    } else {
+                        result.exceptionOrNull()?.printStackTrace()
+                        lastState = result.exceptionOrNull()?.message ?: "Error fetching product details"
+                        stateObserver?.invoke(lastState)
                     }
                 }
             }
@@ -110,6 +136,8 @@ class BillingHelper(context: Context) {
         productType: String = BillingClient.ProductType.SUBS,
         onResult: ((Result<List<Purchase>>) -> Unit)? = null
     ) {
+        lastState = "Fetching purchases"
+        stateObserver?.invoke(lastState)
         withContext(Dispatchers.IO) {
             billingClient.queryPurchasesAsync(
                 QueryPurchasesParams.newBuilder()
@@ -123,6 +151,8 @@ class BillingHelper(context: Context) {
                 ))
             }else {
                 onResult?.invoke(Result.failure(Exception("Error fetching purchases")))
+                lastState = result.billingResult.getReadableResponse(false).second
+                stateObserver?.invoke(lastState)
             }
 
         }
@@ -173,6 +203,8 @@ class BillingHelper(context: Context) {
         productList: List<ProductData>,
         onResult: ((Result<List<ProductDetails>>) -> Unit)? = null
     ) {
+        lastState = "Fetching product details"
+        stateObserver?.invoke(lastState)
         withContext(Dispatchers.IO) {
             billingClient.queryProductDetails(
                 QueryProductDetailsParams.newBuilder().apply {
@@ -184,8 +216,12 @@ class BillingHelper(context: Context) {
             val productDetailsList = productDetailsResult.productDetailsList
             if (billingResult.responseCode == BillingResponseCode.OK && productDetailsList != null) {
                 onResult?.invoke(Result.success(productDetailsList))
+                lastState = "Fetched product details"
+                stateObserver?.invoke(lastState)
             } else {
                 onResult?.invoke(Result.failure(Exception("Error fetching product details")))
+                lastState = productDetailsResult.billingResult.getReadableResponse(false).second
+                stateObserver?.invoke(lastState)
             }
         }
     }
@@ -194,19 +230,27 @@ class BillingHelper(context: Context) {
 
     fun startConnection(onConnected: (() -> Unit)? = null) {
         if (billingClient.connectionState == BillingClient.ConnectionState.CONNECTED) {
+            stateObserver?.invoke("Billing service connected")
             onConnected?.invoke()
         } else {
             billingClient.startConnection(
                 object : BillingClientStateListener {
                     override fun onBillingServiceDisconnected() {
                         connected = BillingClient.ConnectionState.DISCONNECTED
-
+                        lastState = "Billing service disconnected"
+                        stateObserver?.invoke(lastState)
                     }
 
                     override fun onBillingSetupFinished(billingResult: BillingResult) {
                         if (billingResult.responseCode == BillingResponseCode.OK) {
                             // The BillingClient is ready. You can query purchases here.
                             connected = BillingClient.ConnectionState.CONNECTED
+                            lastState = ("Billing service Connected")
+                            stateObserver?.invoke(lastState)
+                            onConnected?.invoke()
+                        }else{
+                            lastState = billingResult.getReadableResponse(false).second
+                            stateObserver?.invoke(lastState)
                         }
                     }
 

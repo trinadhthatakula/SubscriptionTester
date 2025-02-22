@@ -37,9 +37,16 @@ class MainActivity : ComponentActivity() {
                 val activeSubscriptions by billingHelper.activeSubsList.collectAsStateWithLifecycle()
                 val oneTimePurchases by billingHelper.oneTimeList.collectAsStateWithLifecycle()
 
+                var statusTxt by remember { mutableStateOf(billingHelper.lastState) }
+
+                billingHelper.stateObserver = {
+                    statusTxt = it
+                }
+
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     MainScreen(
                         modifier = Modifier.padding(innerPadding),
+                        statusTxt = statusTxt,
                         productList = productList,
                         activeSubsList = activeSubscriptions,
                         oneTimeList = oneTimePurchases
