@@ -6,22 +6,16 @@ import com.sub.tester.repo.SubscriptionManager
 import org.koin.android.ext.android.inject
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
+import org.koin.androix.startup.KoinStartup
 import org.koin.core.context.startKoin
 import org.koin.core.logger.Level
+import org.koin.dsl.KoinConfiguration
+import org.koin.dsl.koinConfiguration
 
-class SubscriptionTesterApp : Application() {
+class SubscriptionTesterApp : Application(), KoinStartup{
 
     override fun onCreate() {
         super.onCreate()
-
-        startKoin {
-            // Log Koin errors
-            androidLogger(Level.ERROR)
-            // Reference Android context
-            androidContext(this@SubscriptionTesterApp)
-            // Load modules
-            modules(appModule)
-        }
 
         // Force initialization of the SubscriptionManager so it starts watching immediately
         // (Only necessary if you want it running before any UI appears)
@@ -29,4 +23,14 @@ class SubscriptionTesterApp : Application() {
         // Accessing 'manager' here forces Koin to create the instance and run the init block
         manager.toString()
     }
+
+    override fun onKoinStartup()= koinConfiguration {
+        // Log Koin errors
+        androidLogger(Level.ERROR)
+        // Reference Android context
+        androidContext(this@SubscriptionTesterApp)
+        // Load modules
+        modules(appModule)
+    }
+
 }

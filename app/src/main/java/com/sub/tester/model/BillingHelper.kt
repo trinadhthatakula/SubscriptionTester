@@ -14,13 +14,13 @@ import com.android.billingclient.api.Purchase
 import com.android.billingclient.api.PurchasesUpdatedListener
 import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchasesParams
+import com.android.billingclient.api.acknowledgePurchase
 import com.android.billingclient.api.queryProductDetails
 import com.android.billingclient.api.queryPurchasesAsync
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -159,23 +159,51 @@ class BillingHelper(context: Context) {
     suspend fun fetchAvailableProducts() {
         updateState("Fetching product details...")
 
-        val params = QueryProductDetailsParams.newBuilder()
-            .setProductList(productList.map { it.toProductDetailsParams() })
-            .build()
+        // 1. Separate the list into SUBS and INAPP
+        val subProducts = productList.filter { it.type == BillingClient.ProductType.SUBS }
+        val inAppProducts = productList.filter { it.type == BillingClient.ProductType.INAPP }
 
-        val result = billingClient.queryProductDetails(params)
+        val combinedDetails = mutableListOf<ProductDetails>()
 
-        if (result.billingResult.responseCode == BillingResponseCode.OK) {
-            _mutableProductDetailsList.update { result.productDetailsList ?: emptyList() }
+        // 2. Fetch SUBS (if any)
+        if (subProducts.isNotEmpty()) {
+            val params = QueryProductDetailsParams.newBuilder()
+                .setProductList(subProducts.map { it.toProductDetailsParams() })
+                .build()
+
+            val result = billingClient.queryProductDetails(params)
+            if (result.billingResult.responseCode == BillingResponseCode.OK) {
+                result.productDetailsList?.let { combinedDetails.addAll(it) }
+            } else {
+                log("Error fetching SUBS: ${result.billingResult.debugMessage}")
+            }
+        }
+
+        // 3. Fetch INAPP (if any)
+        if (inAppProducts.isNotEmpty()) {
+            val params = QueryProductDetailsParams.newBuilder()
+                .setProductList(inAppProducts.map { it.toProductDetailsParams() })
+                .build()
+
+            val result = billingClient.queryProductDetails(params)
+            if (result.billingResult.responseCode == BillingResponseCode.OK) {
+                result.productDetailsList?.let { combinedDetails.addAll(it) }
+            } else {
+                log("Error fetching INAPP: ${result.billingResult.debugMessage}")
+            }
+        }
+
+        // 4. Update the flow with BOTH results combined
+        if (combinedDetails.isNotEmpty()) {
+            _mutableProductDetailsList.update { combinedDetails }
             updateState("Product details fetched")
         } else {
-            updateState("Error fetching details: ${result.billingResult.debugMessage}")
+            updateState("No product details found")
         }
     }
 
     /**
      * Dynamic Offer Token Logic
-     * Never hardcode "TRIAL". Always find a valid offer.
      */
     fun launchPurchaseFlow(
         activity: Activity,
@@ -223,12 +251,49 @@ class BillingHelper(context: Context) {
 
     private fun processPurchases(purchases: List<Purchase>) {
         CoroutineScope(Dispatchers.IO).launch {
-            // Acknowledge logic goes here (omitted for brevity, but MANDATORY)
-            // You must verify signature and call acknowledgePurchase or consumeAsync
+            purchases.forEach { purchase ->
+                if (purchase.purchaseState == Purchase.PurchaseState.PURCHASED) {
+                    // Check if already acknowledged to avoid errors
+                    if (!purchase.isAcknowledged) {
+                        acknowledgePurchase(purchase)
+                    } else {
+                        log("Purchase already acknowledged: ${purchase.orderId}")
+                        // Still verify with backend here if you had one
+                        refreshAllData() // Refresh UI just in case
+                    }
+                } else if (purchase.purchaseState == Purchase.PurchaseState.PENDING) {
+                    log("Purchase is pending: ${purchase.orderId}")
+                    // Tell user to wait. Do not grant entitlement yet.
+                    withContext(Dispatchers.Main) {
+                        purchaseListener?.invoke(Result.failure(Exception("Payment is pending")))
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun acknowledgePurchase(purchase: Purchase) {
+        val params = com.android.billingclient.api.AcknowledgePurchaseParams.newBuilder()
+            .setPurchaseToken(purchase.purchaseToken)
+            .build()
+
+        val result = billingClient.acknowledgePurchase(params)
+
+        if (result.responseCode == BillingResponseCode.OK) {
+            log("Purchase successfully acknowledged: ${purchase.orderId}")
+
+            // CRITICAL: Now that it is acknowledged, grant the item to the user.
+            // Since we are using StateFlow, refreshing the data will update the UI
+            // and your SubscriptionManager will capture the new 'isAcknowledged' state.
+            refreshAllData()
 
             withContext(Dispatchers.Main) {
                 purchaseListener?.invoke(Result.success("Purchase Successful"))
-                refreshAllData() // Refresh lists after purchase
+            }
+        } else {
+            log("Error acknowledging purchase: ${result.debugMessage}")
+            withContext(Dispatchers.Main) {
+                purchaseListener?.invoke(Result.failure(Exception("Error acknowledging: ${result.debugMessage}")))
             }
         }
     }
