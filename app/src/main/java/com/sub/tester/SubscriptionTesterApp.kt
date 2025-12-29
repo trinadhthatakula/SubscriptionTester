@@ -1,39 +1,32 @@
 package com.sub.tester
 
 import android.app.Application
-import androidx.core.content.edit
-import com.android.billingclient.api.BillingClient
-import com.android.billingclient.api.Purchase
-import com.sub.tester.model.BillingHelper
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
+import com.sub.tester.di.appModule
+import com.sub.tester.repo.SubscriptionManager
+import org.koin.android.ext.android.inject
+import org.koin.android.ext.koin.androidContext
+import org.koin.android.ext.koin.androidLogger
+import org.koin.core.context.startKoin
+import org.koin.core.logger.Level
 
 class SubscriptionTesterApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
 
-        val sp = getSharedPreferences("prefs", MODE_PRIVATE)
-
-        val billingHelper = BillingHelper.getInstance(this)
-        CoroutineScope(Dispatchers.IO).launch {
-            billingHelper.fetchPurchasesAsync { result ->
-                if (result.isSuccess) {
-                    result.getOrDefault(emptyList()).forEach { purchase ->
-                        purchase.products.forEach { product ->
-                            sp.edit {
-                                putBoolean(
-                                    product,
-                                    purchase.purchaseState == Purchase.PurchaseState.PURCHASED
-                                )
-                            }
-                        }
-                    }
-                }
-            }
+        startKoin {
+            // Log Koin errors
+            androidLogger(Level.ERROR)
+            // Reference Android context
+            androidContext(this@SubscriptionTesterApp)
+            // Load modules
+            modules(appModule)
         }
 
+        // Force initialization of the SubscriptionManager so it starts watching immediately
+        // (Only necessary if you want it running before any UI appears)
+        val manager: SubscriptionManager by inject()
+        // Accessing 'manager' here forces Koin to create the instance and run the init block
+        manager.toString()
     }
-
 }
