@@ -70,4 +70,6 @@ dependencies {
     debugImplementation(libs.androidx.ui.test.manifest)
 
     implementation(libs.billing)
+
+    implementation(libs.bundles.koin)
 }
