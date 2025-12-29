@@ -91,6 +91,3 @@ Pull requests are welcome. For major changes, please open an issue first to disc
 
 [MIT](https://choosealicense.com/licenses/mit/)
 
-Then, do the **Setup Checklist** on the Play Console. That is where the real battle begins. Do not come back to me saying "list is empty" until you have clicked that "Accept Invite" link.
-
-```
