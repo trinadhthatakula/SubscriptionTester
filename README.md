@@ -1,3 +1,5 @@
+<img src="app/src/main/launcher-playstore.png" alt="Thor Logo" height="192dp">
+
 # Valhalla Billing V8 🛡️
 
 > **A ruthless, production-ready implementation of Google Play Billing Library 8.3.0.**
