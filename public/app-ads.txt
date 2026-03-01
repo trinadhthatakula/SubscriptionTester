@@ -1,0 +1,4 @@
+google.com, pub-4109225165450055, DIRECT, f08c47fec0942fa0
+mopub.com, e6399aa9114947c38e3c08382521efb8, DIRECT, 74b46c0ea83967ca
+rubiconproject.com, 22884, DIRECT, 0bfd66d529a55807
+facebook.com, 116887229369307, DIRECT, c3e20eee3f780d68
